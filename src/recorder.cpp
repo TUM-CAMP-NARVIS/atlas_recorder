@@ -141,7 +141,7 @@ int do_recording(uint8_t device_index,
     auto next_recording = std::make_unique<k4a_record_t>();
     std::thread backup_thread;
 
-    bool ext_flush_done{false};
+    std::atomic<bool> ext_flush_done{false};
 
     while(1) {
 

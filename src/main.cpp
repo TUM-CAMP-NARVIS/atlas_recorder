@@ -144,8 +144,8 @@ int main(int argc, char **argv)
                               1,
                               [&](const std::vector<char *> &args) {
                                   max_block_length = std::stoi(args[0]);
-                                  if (max_block_length < 0)
-                                      throw std::runtime_error("Max block length must be positive");
+                                  if (max_block_length < 0 || max_block_length < 5)
+                                      throw std::runtime_error("Max block length must be positive integer >= 5.");
                               });
     cmd_parser.RegisterOption("-c|--color-mode",
                               "Set the color sensor mode (default: 1080p), Available options:\n"
