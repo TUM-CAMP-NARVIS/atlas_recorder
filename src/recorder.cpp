@@ -6,6 +6,7 @@
 #include <atomic>
 #include <iostream>
 #include <algorithm>
+#include <thread>
 
 #include <k4a/k4a.h>
 #include <k4arecord/record.h>
@@ -135,11 +136,15 @@ int do_recording(uint8_t device_index,
 
     size_t file_counter = 0;
 
+    auto current_recording = std::make_unique<k4a_record_t>();
+    auto next_recording = std::make_unique<k4a_record_t>();
+
+    bool ext_flush_done{false};
+
     while(1) {
 
         std::string recording_filename = next_record_name(base_filename, file_counter);
-        k4a_record_t recording;
-        if (K4A_FAILED(k4a_record_create(recording_filename.c_str(), device, *device_config, &recording)))
+        if (K4A_FAILED(k4a_record_create(recording_filename.c_str(), device, *device_config, current_recording.get())))
         {
             std::cerr << "Unable to create recording file: " << recording_filename << std::endl;
             return 1;
@@ -149,9 +154,9 @@ int do_recording(uint8_t device_index,
 
         if (record_imu)
         {
-            CHECK(k4a_record_add_imu_track(recording), device);
+            CHECK(k4a_record_add_imu_track(*current_recording), device);
         }
-        CHECK(k4a_record_write_header(recording), device);
+        CHECK(k4a_record_write_header(*current_recording), device);
 
         // Wait for the first capture before starting recording.
         k4a_capture_t capture;
@@ -191,12 +196,21 @@ int do_recording(uint8_t device_index,
             return 1;
         }
 
-        record_block(recording, device, capture, max_block_length, camera_fps, record_imu);
+        record_block(*current_recording, device, capture, max_block_length, camera_fps, record_imu);
 
         std::cout << "Saving recording: " << recording_filename << std::endl;
-        // TODO: do we do this in a new thread?
-        CHECK(k4a_record_flush(recording), device);
-        k4a_record_close(recording);
+
+        std::swap(current_recording, next_recording);
+
+        // shouldn't be necessary
+        // current_recording = nullptr;
+
+        std::thread thread([&ext_flush_done](k4a_record_t record, k4a_device_t device) {
+                CHECK(k4a_record_flush(record), device)
+                k4a_record_close(record);
+                ext_flush_done = true;
+        }, *next_recording, device);
+        thread.detach();
 
         ++file_counter;
     }
@@ -228,7 +242,9 @@ int record_block(k4a_record_t recording, k4a_device_t device,
     int32_t timeout_ms = 1000 / camera_fps;
     do
     {
+        //clock_t t0 = clock();
         result = k4a_device_get_capture(device, &capture, timeout_ms);
+        //std::cout << "clock time: " << (float)(clock() - t0) / CLOCKS_PER_SEC << std::endl;
         if (result == K4A_WAIT_RESULT_TIMEOUT)
         {
             continue;
