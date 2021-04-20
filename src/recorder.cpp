@@ -288,7 +288,9 @@ int record_block(k4a_record_t recording, k4a_device_t device,
 }
 
 std::string next_record_name(std::string base, uint32_t counter) {
+    const uint8_t N_zero = 6;
     std::vector<std::string> strs;
     boost::split(strs, base, boost::is_any_of("."));
-    return strs[0] + '_' + std::to_string(counter) + '.' + strs[1];
+    auto cn = std::to_string(counter);
+    return strs[0] + '_' + std::string(N_zero - cn.length(), '0') + cn + '.' + strs[1];
 }

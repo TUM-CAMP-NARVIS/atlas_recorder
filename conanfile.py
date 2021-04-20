@@ -19,39 +19,12 @@ class ExportMKVConan(ConanFile):
         "Boost/1.75.0@camposs/stable"
          )
 
-    default_options = {
-        "opencv:shared": True,
-        "magnum:with_anyimageimporter": True,
-        "magnum:with_tgaimporter": True,
-        "magnum:with_anysceneimporter": True,
-        "magnum:with_gl_info": True,
-        "magnum:with_objimporter": True,
-        "magnum:with_tgaimageconverter": True,
-        "magnum:with_imageconverter": True,
-        "magnum:with_anyimageconverter": True,
-        "magnum:with_sdl2application": True,
-        "magnum:with_eglcontext": False,
-        "magnum:with_windowlesseglapplication": False,
-        "magnum:target_gles": False,
-        "magnum:with_opengltester": True,
-    }
-
     # all sources are deployed with the package
     exports_sources = "cmake/*", "include/*", "src/*", "CMakeLists.txt"
 
     def configure(self):
-
-        if self.settings.os == "Linux":
-            self.options["opencv"].with_gtk = True
-
-        if self.settings.os == "Macos":
-            self.options['magnum-extras'].with_ui_gallery = False
-            self.options['magnum-extras'].with_player = False
-            self.options['magnum-plugins'].with_tinygltfimporter = False
-
-
         if self.settings.os == "Windows":
-            self.options['magnum'].with_windowlesswglapplication = True
+            raise Exception("Windows not currently supported.")
 
     def imports(self):
         self.copy(src="bin", pattern="*.dll", dst="./bin") # Copies all dll files from packages bin folder to my "bin" folder
@@ -74,3 +47,6 @@ class ExportMKVConan(ConanFile):
     def package(self):
         cmake = self._cmake_configure()
         cmake.install()
+
+    def package_info(self):
+        self.cpp_info.libs = ['atlas_recorder']
