@@ -19,11 +19,4 @@ int do_recording(uint8_t device_index,
                  int32_t absoluteExposureValue,
                  int32_t gain);
 
-int record_block(k4a_record_t recording,
-                 k4a_device_t device,
-                 k4a_capture_t capture,
-                 int max_block_length,
-                 uint32_t camera_fps,
-                 bool record_imu);
-
 std::string next_record_name(std::string base, uint32_t counter);

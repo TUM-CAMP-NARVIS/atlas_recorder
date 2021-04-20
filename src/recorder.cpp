@@ -7,6 +7,7 @@
 #include <iostream>
 #include <algorithm>
 #include <thread>
+#include <assert.h>
 
 #include <k4a/k4a.h>
 #include <k4arecord/record.h>
@@ -138,6 +139,7 @@ int do_recording(uint8_t device_index,
 
     auto current_recording = std::make_unique<k4a_record_t>();
     auto next_recording = std::make_unique<k4a_record_t>();
+    std::thread backup_thread;
 
     bool ext_flush_done{false};
 
@@ -167,7 +169,7 @@ int do_recording(uint8_t device_index,
             std::cout << "[subordinate mode] Waiting for signal from master" << std::endl;
         }
         clock_t first_capture_start = clock();
-        k4a_wait_result_t result = K4A_WAIT_RESULT_TIMEOUT;
+        k4a_wait_result_t result;
         // Wait for the first capture in a loop so Ctrl-C will still exit.
         while (!exiting && (clock() - first_capture_start) < (CLOCKS_PER_SEC * timeout_sec_for_first_capture))
         {
@@ -196,21 +198,67 @@ int do_recording(uint8_t device_index,
             return 1;
         }
 
-        record_block(*current_recording, device, capture, max_block_length, camera_fps, record_imu);
+        clock_t recording_start = clock();
+        int32_t timeout_ms = 1000 / camera_fps;
+        do
+        {
+            result = k4a_device_get_capture(device, &capture, timeout_ms);
+            if (result == K4A_WAIT_RESULT_TIMEOUT)
+            {
+                continue;
+            }
+            else if (result != K4A_WAIT_RESULT_SUCCEEDED)
+            {
+                std::cerr << "Runtime error: k4a_device_get_capture() returned " << result << std::endl;
+                break;
+            }
+            CHECK(k4a_record_write_capture(*current_recording, capture), device);
+            k4a_capture_release(capture);
+
+            if (backup_thread.joinable() && ext_flush_done) {
+                backup_thread.join();
+                ext_flush_done = false;
+            }
+
+            if (record_imu)
+            {
+                do
+                {
+                    k4a_imu_sample_t sample;
+                    result = k4a_device_get_imu_sample(device, &sample, 0);
+                    if (result == K4A_WAIT_RESULT_TIMEOUT)
+                    {
+                        break;
+                    }
+                    else if (result != K4A_WAIT_RESULT_SUCCEEDED)
+                    {
+                        std::cerr << "Runtime error: k4a_imu_get_sample() returned " << result << std::endl;
+                        break;
+                    }
+                    k4a_result_t write_result = k4a_record_write_imu_sample(*current_recording, sample);
+                    if (K4A_FAILED(write_result))
+                    {
+                        std::cerr << "Runtime error: k4a_record_write_imu_sample() returned " << write_result << std::endl;
+                        break;
+                    }
+                } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
+                         (clock() - recording_start < max_block_length * CLOCKS_PER_SEC));
+            }
+        } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
+                 (clock() - recording_start < max_block_length * CLOCKS_PER_SEC));
 
         std::cout << "Saving recording: " << recording_filename << std::endl;
 
         std::swap(current_recording, next_recording);
 
-        // shouldn't be necessary
-        // current_recording = nullptr;
+        // if ext_flush_done thread was unable to write.. can we recover?
+        assert(!ext_flush_done);
 
-        std::thread thread([&ext_flush_done](k4a_record_t record, k4a_device_t device) {
+        backup_thread = std::thread([&ext_flush_done](k4a_record_t record, k4a_device_t device) {
                 CHECK(k4a_record_flush(record), device)
                 k4a_record_close(record);
                 ext_flush_done = true;
         }, *next_recording, device);
-        thread.detach();
 
         ++file_counter;
     }
@@ -237,53 +285,6 @@ int do_recording(uint8_t device_index,
 int record_block(k4a_record_t recording, k4a_device_t device,
                  k4a_capture_t capture, int max_block_length,
                  uint32_t camera_fps, bool record_imu) {
-    k4a_wait_result_t result;
-    clock_t recording_start = clock();
-    int32_t timeout_ms = 1000 / camera_fps;
-    do
-    {
-        //clock_t t0 = clock();
-        result = k4a_device_get_capture(device, &capture, timeout_ms);
-        //std::cout << "clock time: " << (float)(clock() - t0) / CLOCKS_PER_SEC << std::endl;
-        if (result == K4A_WAIT_RESULT_TIMEOUT)
-        {
-            continue;
-        }
-        else if (result != K4A_WAIT_RESULT_SUCCEEDED)
-        {
-            std::cerr << "Runtime error: k4a_device_get_capture() returned " << result << std::endl;
-            break;
-        }
-        CHECK(k4a_record_write_capture(recording, capture), device);
-        k4a_capture_release(capture);
-
-        if (record_imu)
-        {
-            do
-            {
-                k4a_imu_sample_t sample;
-                result = k4a_device_get_imu_sample(device, &sample, 0);
-                if (result == K4A_WAIT_RESULT_TIMEOUT)
-                {
-                    break;
-                }
-                else if (result != K4A_WAIT_RESULT_SUCCEEDED)
-                {
-                    std::cerr << "Runtime error: k4a_imu_get_sample() returned " << result << std::endl;
-                    break;
-                }
-                k4a_result_t write_result = k4a_record_write_imu_sample(recording, sample);
-                if (K4A_FAILED(write_result))
-                {
-                    std::cerr << "Runtime error: k4a_record_write_imu_sample() returned " << write_result << std::endl;
-                    break;
-                }
-            } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
-                     (clock() - recording_start < max_block_length * CLOCKS_PER_SEC));
-        }
-    } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
-             (clock() - recording_start < max_block_length * CLOCKS_PER_SEC));
-    return 0;
 }
 
 std::string next_record_name(std::string base, uint32_t counter) {

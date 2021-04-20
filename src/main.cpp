@@ -110,7 +110,7 @@ static int string_compare(const char *s1, const char *s2)
 int main(int argc, char **argv)
 {
     int device_index = 0;
-    int max_block_length = 360;
+    int max_block_length = 300;
     k4a_image_format_t recording_color_format = K4A_IMAGE_FORMAT_COLOR_MJPG;
     k4a_color_resolution_t recording_color_resolution = K4A_COLOR_RESOLUTION_1080P;
     k4a_depth_mode_t recording_depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED;
@@ -126,7 +126,7 @@ int main(int argc, char **argv)
 
     CmdParser::OptionParser cmd_parser;
     cmd_parser.RegisterOption("-h|--help", "Prints this help", [&]() {
-        std::cout << "k4arecorder [options] output.mkv" << std::endl << std::endl;
+        std::cout << "atlas_recorder [options] output.mkv" << std::endl << std::endl;
         cmd_parser.PrintOptions();
         exit(0);
     });
@@ -140,7 +140,7 @@ int main(int argc, char **argv)
                                       throw std::runtime_error("Device index must 0-255");
                               });
     cmd_parser.RegisterOption("-l|--max-block-length",
-                              "Limit the the file block length to N frames (default: 300)",
+                              "Limit the the file block length to N seconds (default: 300)",
                               1,
                               [&](const std::vector<char *> &args) {
                                   max_block_length = std::stoi(args[0]);
@@ -375,7 +375,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        std::cout << "k4arecorder [options] output.mkv" << std::endl << std::endl;
+        std::cout << "atlas_recorder [options] output.mkv" << std::endl << std::endl;
         cmd_parser.PrintOptions();
         return 0;
     }
