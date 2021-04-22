@@ -4,8 +4,13 @@ FROM ${from}
 
 WORKDIR /atlas_recorder
 
+ARG BRANCH=master
+
+# trick to invalidate the cache if git version changes
+ADD https://api.github.com/repos/TUM-CAMP-NARVIS/atlas_recorder/git/refs/heads/$BRANCH version.json
+
 RUN --mount=type=ssh,id=github,required cd / && \
-    git clone -b master https://github.com/TUM-CAMP-NARVIS/atlas_recorder.git /pcp_deploy && \
+    git clone -b $BRANCH https://github.com/TUM-CAMP-NARVIS/atlas_recorder.git /pcp_deploy && \
     mkdir /pcp_deploy/install && \
     cd /pcp_deploy/install && \
     export CONAN_CPU_COUNT=$(nproc) && conan install .. --build "missing" -s build_type=Release && \
