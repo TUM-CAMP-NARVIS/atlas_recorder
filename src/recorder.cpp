@@ -200,7 +200,7 @@ int do_recording(uint8_t device_index,
         }
         CHECK(k4a_record_write_header(*current_recording), device);
 
-        clock_t recording_start = clock();
+        int recording_start = time(NULL);
         int32_t timeout_ms = 1000 / camera_fps;
         do
         {
@@ -244,10 +244,10 @@ int do_recording(uint8_t device_index,
                         break;
                     }
                 } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
-                         (clock() - recording_start < max_block_length * CLOCKS_PER_SEC));
+                         (time(NULL) - recording_start < max_block_length));
             }
         } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
-                 (clock() - recording_start < max_block_length * CLOCKS_PER_SEC));
+                 (time(NULL) - recording_start < max_block_length));
 
         std::cout << "Saving recording: " << recording_filename << std::endl;
 
