@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <thread>
 #include <assert.h>
+#include <time.h>
 
 #include <k4a/k4a.h>
 #include <k4arecord/record.h>
@@ -132,6 +133,45 @@ int do_recording(uint8_t device_index,
 
     std::cout << "Device started" << std::endl;
 
+    // Wait for the first capture before starting recording.
+    k4a_capture_t capture;
+    int32_t timeout_sec_for_first_capture = 60;
+    if (device_config->wired_sync_mode == K4A_WIRED_SYNC_MODE_SUBORDINATE)
+    {
+        timeout_sec_for_first_capture = 360;
+        std::cout << "[subordinate mode] Waiting for signal from master" << std::endl;
+    }
+    int first_capture_start = time(NULL);
+    k4a_wait_result_t result;
+    // Wait for the first capture in a loop so Ctrl-C will still exit.
+    while (!exiting && (time(NULL) - first_capture_start) < timeout_sec_for_first_capture)
+    {
+        result = k4a_device_get_capture(device, &capture, 100);
+        if (result == K4A_WAIT_RESULT_SUCCEEDED)
+        {
+            k4a_capture_release(capture);
+            break;
+        }
+        else if (result == K4A_WAIT_RESULT_FAILED)
+        {
+            std::cerr << "Runtime error: k4a_device_get_capture() returned error: " << result << std::endl;
+            return 1;
+        }
+    }
+
+    if (exiting)
+    {
+        // sighandler sets exiting flag.. we can flush the record here
+        k4a_device_close(device);
+        return 0;
+    }
+    else if (result == K4A_WAIT_RESULT_TIMEOUT)
+    {
+        std::cerr << "Timed out waiting for first capture." << std::endl;
+        return 1;
+    }
+
+
     std::cout << "Started recording" << std::endl;
     std::cout << "Press Ctrl-C to stop recording." << std::endl;
 
@@ -159,44 +199,6 @@ int do_recording(uint8_t device_index,
             CHECK(k4a_record_add_imu_track(*current_recording), device);
         }
         CHECK(k4a_record_write_header(*current_recording), device);
-
-        // Wait for the first capture before starting recording.
-        k4a_capture_t capture;
-        int32_t timeout_sec_for_first_capture = 60;
-        if (device_config->wired_sync_mode == K4A_WIRED_SYNC_MODE_SUBORDINATE)
-        {
-            timeout_sec_for_first_capture = 360;
-            std::cout << "[subordinate mode] Waiting for signal from master" << std::endl;
-        }
-        clock_t first_capture_start = clock();
-        k4a_wait_result_t result;
-        // Wait for the first capture in a loop so Ctrl-C will still exit.
-        while (!exiting && (clock() - first_capture_start) < (CLOCKS_PER_SEC * timeout_sec_for_first_capture))
-        {
-            result = k4a_device_get_capture(device, &capture, 100);
-            if (result == K4A_WAIT_RESULT_SUCCEEDED)
-            {
-                k4a_capture_release(capture);
-                break;
-            }
-            else if (result == K4A_WAIT_RESULT_FAILED)
-            {
-                std::cerr << "Runtime error: k4a_device_get_capture() returned error: " << result << std::endl;
-                return 1;
-            }
-        }
-
-        if (exiting)
-        {
-            // sighandler sets exiting flag.. we can flush the record here
-            k4a_device_close(device);
-            return 0;
-        }
-        else if (result == K4A_WAIT_RESULT_TIMEOUT)
-        {
-            std::cerr << "Timed out waiting for first capture." << std::endl;
-            return 1;
-        }
 
         clock_t recording_start = clock();
         int32_t timeout_ms = 1000 / camera_fps;
@@ -280,11 +282,6 @@ int do_recording(uint8_t device_index,
     k4a_device_close(device);
 
     return 0;
-}
-
-int record_block(k4a_record_t recording, k4a_device_t device,
-                 k4a_capture_t capture, int max_block_length,
-                 uint32_t camera_fps, bool record_imu) {
 }
 
 std::string next_record_name(std::string base, uint32_t counter) {
