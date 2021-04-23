@@ -1,12 +1,14 @@
 #pragma once
 
 #include <atomic>
+#include <thread>
 #include <k4a/k4a.h>
 #include <k4arecord/record.h>
 
 #include <boost/algorithm/string.hpp>
 
 extern std::atomic_bool exiting;
+extern std::thread backup_thread;
 
 static const int32_t defaultExposureAuto = -12;
 static const int32_t defaultGainAuto = -1;

@@ -29,6 +29,10 @@ static void signal_handler(int s)
         std::cout << "Stopping recording..." << std::endl;
         exiting_timestamp = clock();
         exiting = true;
+        if (backup_thread.joinable()) {
+            std::cout <<"Terminating backup thread..." << std::endl;
+            backup_thread.join();
+        }
     }
     // If Ctrl-C is received again after 1 second, force-stop the application since it's not responding.
     else if (exiting_timestamp != 0 && clock() - exiting_timestamp > CLOCKS_PER_SEC)

@@ -10,8 +10,12 @@
 #include <assert.h>
 #include <time.h>
 
+# include <boost/filesystem.hpp>
+
 #include <k4a/k4a.h>
 #include <k4arecord/record.h>
+
+namespace fs = boost::filesystem;
 
 inline static uint32_t k4a_convert_fps_to_uint(k4a_fps_t fps)
 {
@@ -47,6 +51,7 @@ inline static uint32_t k4a_convert_fps_to_uint(k4a_fps_t fps)
     }
 
 std::atomic_bool exiting(false);
+std::thread backup_thread;
 
 int do_recording(uint8_t device_index,
                  std::string base_filename,
@@ -179,13 +184,16 @@ int do_recording(uint8_t device_index,
 
     auto current_recording = std::make_unique<k4a_record_t>();
     auto next_recording = std::make_unique<k4a_record_t>();
-    std::thread backup_thread;
 
     std::atomic<bool> ext_flush_done{false};
 
     while(1) {
 
-        std::string recording_filename = next_record_name(base_filename, file_counter);
+        // write file to temp file until is has been closed.
+        std::string final_filename = next_record_name(base_filename, file_counter);
+        fs::path base_path(base_filename);
+        fs::path dir = base_path.parent_path();
+        std::string recording_filename = (dir / ("_temp_" + std::to_string(file_counter) + ".tmp")).string();
         if (K4A_FAILED(k4a_record_create(recording_filename.c_str(), device, *device_config, current_recording.get())))
         {
             std::cerr << "Unable to create recording file: " << recording_filename << std::endl;
@@ -193,74 +201,84 @@ int do_recording(uint8_t device_index,
         }
 
         std::cout << "Created file: " << recording_filename << std::endl;
-
-        if (record_imu)
-        {
-            CHECK(k4a_record_add_imu_track(*current_recording), device);
-        }
-        CHECK(k4a_record_write_header(*current_recording), device);
-
-        int recording_start = time(NULL);
-        int32_t timeout_ms = 1000 / camera_fps;
-        do
-        {
-            result = k4a_device_get_capture(device, &capture, timeout_ms);
-            if (result == K4A_WAIT_RESULT_TIMEOUT)
-            {
-                continue;
-            }
-            else if (result != K4A_WAIT_RESULT_SUCCEEDED)
-            {
-                std::cerr << "Runtime error: k4a_device_get_capture() returned " << result << std::endl;
-                break;
-            }
-            CHECK(k4a_record_write_capture(*current_recording, capture), device);
-            k4a_capture_release(capture);
-
-            if (backup_thread.joinable() && ext_flush_done) {
-                backup_thread.join();
-                ext_flush_done = false;
-            }
-
+        try {
             if (record_imu)
             {
-                do
-                {
-                    k4a_imu_sample_t sample;
-                    result = k4a_device_get_imu_sample(device, &sample, 0);
-                    if (result == K4A_WAIT_RESULT_TIMEOUT)
-                    {
-                        break;
-                    }
-                    else if (result != K4A_WAIT_RESULT_SUCCEEDED)
-                    {
-                        std::cerr << "Runtime error: k4a_imu_get_sample() returned " << result << std::endl;
-                        break;
-                    }
-                    k4a_result_t write_result = k4a_record_write_imu_sample(*current_recording, sample);
-                    if (K4A_FAILED(write_result))
-                    {
-                        std::cerr << "Runtime error: k4a_record_write_imu_sample() returned " << write_result << std::endl;
-                        break;
-                    }
-                } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
-                         (time(NULL) - recording_start < max_block_length));
+                CHECK(k4a_record_add_imu_track(*current_recording), device);
             }
-        } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
-                 (time(NULL) - recording_start < max_block_length));
+            CHECK(k4a_record_write_header(*current_recording), device);
 
-        std::cout << "Saving recording: " << recording_filename << std::endl;
+            int recording_start = time(NULL);
+            int32_t timeout_ms = 1000 / camera_fps;
+            do
+            {
+                result = k4a_device_get_capture(device, &capture, timeout_ms);
+                if (result == K4A_WAIT_RESULT_TIMEOUT)
+                {
+                    continue;
+                }
+                else if (result != K4A_WAIT_RESULT_SUCCEEDED)
+                {
+                    std::cerr << "Runtime error: k4a_device_get_capture() returned " << result << std::endl;
+                    break;
+                }
+                CHECK(k4a_record_write_capture(*current_recording, capture), device);
+                k4a_capture_release(capture);
+
+                if (backup_thread.joinable() && ext_flush_done) {
+                    backup_thread.join();
+                    ext_flush_done = false;
+                }
+
+                if (record_imu)
+                {
+                    do
+                    {
+                        k4a_imu_sample_t sample;
+                        result = k4a_device_get_imu_sample(device, &sample, 0);
+                        if (result == K4A_WAIT_RESULT_TIMEOUT)
+                        {
+                            break;
+                        }
+                        else if (result != K4A_WAIT_RESULT_SUCCEEDED)
+                        {
+                            std::cerr << "Runtime error: k4a_imu_get_sample() returned " << result << std::endl;
+                            break;
+                        }
+                        k4a_result_t write_result = k4a_record_write_imu_sample(*current_recording, sample);
+                        if (K4A_FAILED(write_result))
+                        {
+                            std::cerr << "Runtime error: k4a_record_write_imu_sample() returned " << write_result << std::endl;
+                            break;
+                        }
+                    } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
+                             (time(NULL) - recording_start < max_block_length));
+                }
+            } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
+                     (time(NULL) - recording_start < max_block_length));
+        } catch (...) {
+            std::cout << "error during capture.. trying to clean up." << std::endl;
+            k4a_record_flush(*current_recording);
+            k4a_record_close(*current_recording);
+
+            if (backup_thread.joinable()) {
+                backup_thread.join();
+            }
+            // leave loop and close device;
+            break;
+        }
 
         std::swap(current_recording, next_recording);
 
-        // if ext_flush_done thread was unable to write.. can we recover?
-        assert(!ext_flush_done);
-
-        backup_thread = std::thread([&ext_flush_done](k4a_record_t record, k4a_device_t device) {
+        backup_thread = std::thread([&ext_flush_done](k4a_record_t record, k4a_device_t device,
+            std::string tmp, std::string final_name) {
+                std::cout << "Saving recording: " << final_name << std::endl;
                 CHECK(k4a_record_flush(record), device)
                 k4a_record_close(record);
+                std::cout << "Renaming: " << tmp << " to " << final_name << std::endl;
+                std::rename(tmp.c_str(), final_name.c_str());
                 ext_flush_done = true;
-        }, *next_recording, device);
+        }, *next_recording, device, recording_filename, final_filename);
 
         ++file_counter;
     }
@@ -269,6 +287,9 @@ int do_recording(uint8_t device_index,
     {
         exiting = true;
         std::cout << "Stopping recording..." << std::endl;
+    }
+    if (backup_thread.joinable()) {
+        backup_thread.join();
     }
 
     if (record_imu)
