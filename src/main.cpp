@@ -16,6 +16,8 @@
 #include <csignal>
 #include <math.h>
 
+# include <boost/filesystem.hpp>
+
 #include "recorder.h"
 
 static time_t exiting_timestamp;
@@ -117,11 +119,13 @@ int main(int argc, char **argv)
     int max_block_length = 9000;
     k4a_image_format_t recording_color_format = K4A_IMAGE_FORMAT_COLOR_MJPG;
     k4a_color_resolution_t recording_color_resolution = K4A_COLOR_RESOLUTION_1080P;
+    std::string recording_color_res_verbose = "1080p";
     k4a_depth_mode_t recording_depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED;
     k4a_fps_t recording_rate = K4A_FRAMES_PER_SECOND_30;
     bool recording_rate_set = false;
     bool recording_imu_enabled = true;
     k4a_wired_sync_mode_t wired_sync_mode = K4A_WIRED_SYNC_MODE_STANDALONE;
+    std::string wired_sync_mode_verbose = "STANDALONE";
     int32_t depth_delay_off_color_usec = 0;
     uint32_t subordinate_delay_off_master_usec = 0;
     int absoluteExposureValue = defaultExposureAuto;
@@ -156,6 +160,9 @@ int main(int argc, char **argv)
                               "3072p, 2160p, 1536p, 1440p, 1080p, 720p, 720p_NV12, 720p_YUY2, OFF",
                               1,
                               [&](const std::vector<char *> &args) {
+                                  if (args[0] != 0) {
+                                    recording_color_res_verbose = args[0];
+                                  }
                                   if (string_compare(args[0], "3072p") == 0)
                                   {
                                       recording_color_resolution = K4A_COLOR_RESOLUTION_3072P;
@@ -299,15 +306,18 @@ int main(int argc, char **argv)
                                   if (string_compare(args[0], "master") == 0)
                                   {
                                       wired_sync_mode = K4A_WIRED_SYNC_MODE_MASTER;
+                                      wired_sync_mode_verbose = "MASTER";
                                   }
                                   else if (string_compare(args[0], "subordinate") == 0 ||
                                            string_compare(args[0], "sub") == 0)
                                   {
                                       wired_sync_mode = K4A_WIRED_SYNC_MODE_SUBORDINATE;
+                                      wired_sync_mode_verbose = "SUBORDINATE";
                                   }
                                   else if (string_compare(args[0], "standalone") == 0)
                                   {
                                       wired_sync_mode = K4A_WIRED_SYNC_MODE_STANDALONE;
+                                      wired_sync_mode_verbose = "STANDALONE";
                                   }
                                   else
                                   {
@@ -423,6 +433,21 @@ int main(int argc, char **argv)
     sigaction(SIGINT, &act, 0);
     sigaction(SIGTERM, &act, 0);
 #endif
+    boost::filesystem::path base_path(base_filename);
+    boost::filesystem::path dir = base_path.parent_path();
+    std::ofstream md_file;
+
+    md_file.open((dir / "recording.txt").string());
+
+    md_file << "Recording Metadata" << std::endl;
+    md_file << "--------------" << std::endl;
+    md_file << "frame rate: " << k4a_convert_fps_to_uint(recording_rate) << std::endl;
+    md_file << "color resolution: " << recording_color_res_verbose << std::endl;
+    md_file << "sync mode: " << wired_sync_mode_verbose << std::endl;
+    md_file << "sync delay: " << subordinate_delay_off_master_usec << std::endl;
+    md_file << "exposure: " << absoluteExposureValue << "\u03BCs" << std::endl;
+
+    md_file.close();
 
     k4a_device_configuration_t device_config = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
     device_config.color_format = recording_color_format;

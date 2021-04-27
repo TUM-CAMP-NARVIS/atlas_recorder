@@ -5,6 +5,7 @@
 #include <ctime>
 #include <atomic>
 #include <iostream>
+#include <fstream>
 #include <algorithm>
 #include <thread>
 #include <assert.h>
@@ -16,27 +17,6 @@
 #include <k4arecord/record.h>
 
 namespace fs = boost::filesystem;
-
-inline static uint32_t k4a_convert_fps_to_uint(k4a_fps_t fps)
-{
-    uint32_t fps_int;
-    switch (fps)
-    {
-    case K4A_FRAMES_PER_SECOND_5:
-        fps_int = 5;
-        break;
-    case K4A_FRAMES_PER_SECOND_15:
-        fps_int = 15;
-        break;
-    case K4A_FRAMES_PER_SECOND_30:
-        fps_int = 30;
-        break;
-    default:
-        fps_int = 0;
-        break;
-    }
-    return fps_int;
-}
 
 // call k4a_device_close on every failed CHECK
 #define CHECK(x, device)                                                                                               \
@@ -92,6 +72,10 @@ int do_recording(uint8_t device_index,
               << version_info.audio.iteration << std::endl;
 
     uint32_t camera_fps = k4a_convert_fps_to_uint(device_config->camera_fps);
+
+    // store recording metadata
+    fs::path base_path(base_filename);
+    fs::path dir = base_path.parent_path();
 
     if (camera_fps <= 0 || (device_config->color_resolution == K4A_COLOR_RESOLUTION_OFF &&
                             device_config->depth_mode == K4A_DEPTH_MODE_OFF))
@@ -191,8 +175,6 @@ int do_recording(uint8_t device_index,
 
         // write file to temp file until is has been closed.
         std::string final_filename = next_record_name(base_filename, file_counter);
-        fs::path base_path(base_filename);
-        fs::path dir = base_path.parent_path();
         std::string recording_filename = (dir / ("_temp_" + std::to_string(file_counter) + ".tmp")).string();
         if (K4A_FAILED(k4a_record_create(recording_filename.c_str(), device, *device_config, current_recording.get())))
         {
