@@ -187,7 +187,7 @@ int do_recording(uint8_t device_index,
 
     std::atomic<bool> ext_flush_done{false};
 
-    while(1) {
+    while(!exiting) {
 
         // write file to temp file until is has been closed.
         std::string final_filename = next_record_name(base_filename, file_counter);
@@ -202,16 +202,17 @@ int do_recording(uint8_t device_index,
 
         std::cout << "Created file: " << recording_filename << std::endl;
         try {
+            uint8_t frame_cnt = 0;
             if (record_imu)
             {
                 CHECK(k4a_record_add_imu_track(*current_recording), device);
             }
             CHECK(k4a_record_write_header(*current_recording), device);
 
-            int recording_start = time(NULL);
             int32_t timeout_ms = 1000 / camera_fps;
             do
             {
+                frame_cnt++;
                 result = k4a_device_get_capture(device, &capture, timeout_ms);
                 if (result == K4A_WAIT_RESULT_TIMEOUT)
                 {
@@ -252,10 +253,10 @@ int do_recording(uint8_t device_index,
                             break;
                         }
                     } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
-                             (time(NULL) - recording_start < max_block_length));
+                             frame_cnt < max_block_length);
                 }
             } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
-                     (time(NULL) - recording_start < max_block_length));
+                     frame_cnt < max_block_length);
         } catch (...) {
             std::cout << "error during capture.. trying to clean up." << std::endl;
             k4a_record_flush(*current_recording);
@@ -266,6 +267,9 @@ int do_recording(uint8_t device_index,
             }
             // leave loop and close device;
             break;
+        }
+        if (backup_thread.joinable()) {
+            backup_thread.join();
         }
 
         std::swap(current_recording, next_recording);
