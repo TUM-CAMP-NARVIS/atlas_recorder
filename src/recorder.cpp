@@ -184,7 +184,7 @@ int do_recording(uint8_t device_index,
 
         std::cout << "Created file: " << recording_filename << std::endl;
         try {
-            uint8_t frame_cnt = 0;
+            int frame_cnt = 0;
             if (record_imu)
             {
                 CHECK(k4a_record_add_imu_track(*current_recording), device);
@@ -194,7 +194,7 @@ int do_recording(uint8_t device_index,
             int32_t timeout_ms = 1000 / camera_fps;
             do
             {
-                frame_cnt++;
+                ++frame_cnt;
                 result = k4a_device_get_capture(device, &capture, timeout_ms);
                 if (result == K4A_WAIT_RESULT_TIMEOUT)
                 {
@@ -237,8 +237,10 @@ int do_recording(uint8_t device_index,
                     } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
                              frame_cnt < max_block_length);
                 }
-            } while (!exiting && result != K4A_WAIT_RESULT_FAILED &&
-                     frame_cnt < max_block_length);
+                if (frame_cnt % 300 == 0) {
+                    std::cout << "Capturing.. frame count: " << frame_cnt << " / " << max_block_length << std::endl;
+                }
+            } while (!exiting && result != K4A_WAIT_RESULT_FAILED && frame_cnt < max_block_length);
         } catch (...) {
             std::cout << "error during capture.. trying to clean up." << std::endl;
             k4a_record_flush(*current_recording);

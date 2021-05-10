@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.0.0-experimental
-ARG from=registry.artekmed.lan/artekmed_cn_base:v0.3-cuda11
+ARG from=registry.mobile.artekmed.lan/artekmed_cn_base:v0.3-cuda11
 FROM ${from}
 
 WORKDIR /atlas_recorder
