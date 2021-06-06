@@ -198,8 +198,6 @@ int do_recording(uint8_t device_index,
             {
                 ++frame_cnt;
                 result = k4a_device_get_capture(device, &capture, timeout_ms);
-                // TODO: does not work with depth offset
-                auto system_capture_time = duration_cast<nanoseconds>(steady_clock::now().time_since_epoch());
                 if (result == K4A_WAIT_RESULT_TIMEOUT)
                 {
                     continue;
@@ -210,13 +208,6 @@ int do_recording(uint8_t device_index,
                     break;
                 }
                 
-                k4a_image_t color_image = k4a_capture_get_color_image(capture);
-                if (color_image)
-                    k4a_image_set_system_timestamp_nsec(color_image, system_capture_time.count());
-                k4a_image_t depth_image = k4a_capture_get_depth_image(capture);
-                if (depth_image)
-                    k4a_image_set_system_timestamp_nsec(depth_image, system_capture_time.count());
-
                 CHECK(k4a_record_write_capture(*current_recording, capture), device);
                 k4a_capture_release(capture);
 
