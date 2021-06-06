@@ -3,6 +3,7 @@
 
 #include "recorder.h"
 #include <ctime>
+#include <chrono>
 #include <atomic>
 #include <iostream>
 #include <fstream>
@@ -16,6 +17,7 @@
 #include <k4a/k4a.h>
 #include <k4arecord/record.h>
 
+using namespace std::chrono;
 namespace fs = boost::filesystem;
 
 // call k4a_device_close on every failed CHECK
@@ -124,16 +126,16 @@ int do_recording(uint8_t device_index,
 
     // Wait for the first capture before starting recording.
     k4a_capture_t capture;
-    int32_t timeout_sec_for_first_capture = 60;
+    seconds timeout_sec_for_first_capture(60);
     if (device_config->wired_sync_mode == K4A_WIRED_SYNC_MODE_SUBORDINATE)
     {
-        timeout_sec_for_first_capture = 360;
+        timeout_sec_for_first_capture = seconds(360);
         std::cout << "[subordinate mode] Waiting for signal from master" << std::endl;
     }
-    int first_capture_start = time(NULL);
+    steady_clock::time_point first_capture_start = steady_clock::now();
     k4a_wait_result_t result;
     // Wait for the first capture in a loop so Ctrl-C will still exit.
-    while (!exiting && (time(NULL) - first_capture_start) < timeout_sec_for_first_capture)
+    while (!exiting && (steady_clock::now() - first_capture_start) < timeout_sec_for_first_capture)
     {
         result = k4a_device_get_capture(device, &capture, 100);
         if (result == K4A_WAIT_RESULT_SUCCEEDED)
@@ -159,7 +161,6 @@ int do_recording(uint8_t device_index,
         std::cerr << "Timed out waiting for first capture." << std::endl;
         return 1;
     }
-
 
     std::cout << "Started recording" << std::endl;
     std::cout << "Press Ctrl-C to stop recording." << std::endl;
@@ -196,6 +197,8 @@ int do_recording(uint8_t device_index,
             {
                 ++frame_cnt;
                 result = k4a_device_get_capture(device, &capture, timeout_ms);
+                // TODO: does not work with depth offset
+                auto system_capture_time = duration_cast<nanoseconds>(steady_clock::now().time_since_epoch());
                 if (result == K4A_WAIT_RESULT_TIMEOUT)
                 {
                     continue;
@@ -205,6 +208,14 @@ int do_recording(uint8_t device_index,
                     std::cerr << "Runtime error: k4a_device_get_capture() returned " << result << std::endl;
                     break;
                 }
+                
+                k4a_image_t color_image = k4a_capture_get_color_image(capture);
+                if (color_image)
+                    k4a_image_set_system_timestamp_nsec(color_image, system_capture_time.count());
+                k4a_image_t depth_image = k4a_capture_get_depth_image(capture);
+                if (depth_image)
+                    k4a_image_set_system_timestamp_nsec(depth_image, system_capture_time.count());
+
                 CHECK(k4a_record_write_capture(*current_recording, capture), device);
                 k4a_capture_release(capture);
 
@@ -266,6 +277,7 @@ int do_recording(uint8_t device_index,
                 std::cout << "Renaming: " << tmp << " to " << final_name << std::endl;
                 std::rename(tmp.c_str(), final_name.c_str());
                 ext_flush_done = true;
+                return 0;
         }, *next_recording, device, recording_filename, final_filename);
 
         ++file_counter;
@@ -280,9 +292,7 @@ int do_recording(uint8_t device_index,
         backup_thread.join();
     }
 
-    if (record_imu)
-    {
-        k4a_device_stop_imu(device);
+    if (record_imu) { k4a_device_stop_imu(device);
     }
     k4a_device_stop_cameras(device);
 

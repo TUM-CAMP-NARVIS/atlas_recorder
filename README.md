@@ -17,7 +17,7 @@ using multiple tracks to store each sensor stream in a single file.
   -h, --help              Prints this help
   --list                  List the currently connected K4A devices
   --device                Specify the device index to use (default: 0)
-  -l, --max-block-length  Limit the the file block length to N seconds (default: 300)
+  -l, --max-block-length  Limit the the file block length to N frames (default: 9000)
   -c, --color-mode        Set the color sensor mode (default: 1080p), Available options:
                             3072p, 2160p, 1536p, 1440p, 1080p, 720p, 720p_NV12, 720p_YUY2, OFF
   -d, --depth-mode        Set the depth sensor mode (default: NFOV_UNBINNED), Available options:

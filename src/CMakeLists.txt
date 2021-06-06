@@ -9,7 +9,7 @@ SET(APP_SOURCES
         )
 
 add_executable(atlas_recorder ${APP_SOURCES} ${APP_HEADERS} )
-set_property(TARGET atlas_recorder PROPERTY CXX_STANDARD 17)
+set_property(TARGET atlas_recorder PROPERTY CXX_STANDARD 20)
 set_target_properties(atlas_recorder PROPERTIES LINKER_LANGUAGE CXX)
 
 target_link_libraries(atlas_recorder PRIVATE
