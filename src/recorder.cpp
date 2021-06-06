@@ -11,14 +11,15 @@
 #include <thread>
 #include <assert.h>
 #include <time.h>
+#include <filesystem>
 
-# include <boost/filesystem.hpp>
+#include <fmt/core.h>
 
 #include <k4a/k4a.h>
 #include <k4arecord/record.h>
 
 using namespace std::chrono;
-namespace fs = boost::filesystem;
+namespace fs = std::filesystem;
 
 // call k4a_device_close on every failed CHECK
 #define CHECK(x, device)                                                                                               \
@@ -174,8 +175,8 @@ int do_recording(uint8_t device_index,
 
     while(!exiting) {
 
-        // write file to temp file until is has been closed.
         std::string final_filename = next_record_name(base_filename, file_counter);
+        // write file to temp file until is has been closed.
         std::string recording_filename = (dir / ("_temp_" + std::to_string(file_counter) + ".tmp")).string();
         if (K4A_FAILED(k4a_record_create(recording_filename.c_str(), device, *device_config, current_recording.get())))
         {
@@ -304,9 +305,14 @@ int do_recording(uint8_t device_index,
 }
 
 std::string next_record_name(std::string base, uint32_t counter) {
+    fs::path base_path(base);
+    fs::path filename = base_path.filename();
+    if (filename.extension().empty()) {
+        std::cerr << "Filename should have valid extension (use .mkv)" << std::endl;
+    }
     const uint8_t N_zero = 6;
     std::vector<std::string> strs;
-    boost::split(strs, base, boost::is_any_of("."));
     auto cn = std::to_string(counter);
-    return strs[0] + '_' + std::string(N_zero - cn.length(), '0') + cn + '.' + strs[1];
+    std::string new_fname = fmt::format("{0}-{1:06d}{2}", filename.stem().string(), counter, filename.extension().string());
+    return base_path.parent_path() / new_fname;
 }

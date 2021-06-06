@@ -14,7 +14,8 @@ set_target_properties(atlas_recorder PROPERTIES LINKER_LANGUAGE CXX)
 
 target_link_libraries(atlas_recorder PRIVATE
         CONAN_PKG::kinect-azure-sensor-sdk
-        CONAN_PKG::Boost
+        CONAN_PKG::fmt
+        pthread
         )
 
 target_include_directories(atlas_recorder PUBLIC

@@ -3,6 +3,7 @@
 
 #include <k4a/k4a.h>
 
+#include <fstream>
 #include "cmdparser.h"
 #include "assert.h"
 
@@ -16,12 +17,12 @@
 #include <chrono>
 #include <csignal>
 #include <math.h>
-
-# include <boost/filesystem.hpp>
+#include <filesystem>
 
 #include "recorder.h"
 
 using namespace std::chrono;
+namespace fs = std::filesystem;
 
 static steady_clock::time_point exiting_timestamp;
 
@@ -436,8 +437,12 @@ int main(int argc, char **argv)
     sigaction(SIGINT, &act, 0);
     sigaction(SIGTERM, &act, 0);
 #endif
-    boost::filesystem::path base_path(base_filename);
-    boost::filesystem::path dir = base_path.parent_path();
+    fs::path base_path(base_filename);
+    fs::path dir = base_path.parent_path();
+    if (!fs::exists(dir)) {
+        std::cerr << "Invalid output path: " << dir.string() << std::endl;
+        exit(0);
+    }
     std::ofstream md_file;
 
     md_file.open((dir / "recording.txt").string());

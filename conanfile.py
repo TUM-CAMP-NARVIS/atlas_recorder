@@ -15,7 +15,7 @@ class ExportMKVConan(ConanFile):
 
     requires = (
         "kinect-azure-sensor-sdk/1.4.1@camposs/stable",
-        "Boost/1.75.0@camposs/stable"
+        "fmt/7.1.3"
          )
 
     # all sources are deployed with the package
