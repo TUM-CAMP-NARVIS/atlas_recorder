@@ -1,6 +1,14 @@
 # syntax=docker/dockerfile:1.0.0-experimental
-ARG from=registry.mobile.artekmed.lan/artekmed_cn_base:v0.3-cuda11
+ARG from=registry.artekmed.lan/artekmed_cn_base:v0.3-cuda11
+# ARG from=registry.mobile.artekmed.lan/artekmed_cn_base:v0.3-cuda11
 FROM ${from}
+
+RUN sudo apt install software-properties-common && \
+    sudo add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    sudo apt update && \
+    sudo apt install -y gcc-9 g++-9
+
+RUN conan profile update settings.compiler.version=9 default
 
 WORKDIR /atlas_recorder
 
@@ -13,10 +21,11 @@ RUN --mount=type=ssh,id=github,required cd / && \
     git clone -b $BRANCH https://github.com/TUM-CAMP-NARVIS/atlas_recorder.git /pcp_deploy && \
     mkdir /pcp_deploy/install && \
     cd /pcp_deploy/install && \
-    export CONAN_CPU_COUNT=$(nproc) && conan install .. --build "missing" -s build_type=Release && \
+    export CONAN_CPU_COUNT=$(nproc) && \
+    CC=/usr/bin/gcc-9 CXX=/usr/bin/g++-9 conan install .. --build "missing" -s build_type=Release && \
     conan remove "*/*@*/*" --builds --force
 
-RUN cd /pcp_deploy/install && cmake .. && cmake --build .
+RUN cd /pcp_deploy/install && cmake .. -DCMAKE_C_COMPILER=gcc-9 -DCMAKE_CXX_COMPILER=g++-9 && cmake --build . -j $(nproc)
 
 WORKDIR /pcp_deploy/install
 
